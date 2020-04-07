@@ -1,17 +1,19 @@
 import os
+import sys
 
 import torch
 import torch.utils.data
+from maskrcnn_benchmark.structures.bounding_box import BoxList
+from maskrcnn_benchmark.structures.segmentation_mask import SegmentationMask
 from PIL import Image
-import sys
+from torchvision.datasets import VisionDataset
+
+from python_pascal_voc import datasets, voc_utils, pascal_part
 
 if sys.version_info[0] == 2:
     import xml.etree.cElementTree as ET
 else:
     import xml.etree.ElementTree as ET
-
-
-from maskrcnn_benchmark.structures.bounding_box import BoxList
 
 
 class PascalVOCDataset(torch.utils.data.Dataset):
@@ -105,9 +107,7 @@ class PascalVOCDataset(torch.utils.data.Dataset):
                 bb.find("xmax").text,
                 bb.find("ymax").text,
             ]
-            bndbox = tuple(
-                map(lambda x: x - TO_REMOVE, list(map(int, box)))
-            )
+            bndbox = tuple(map(lambda x: x - TO_REMOVE, list(map(int, box))))
 
             boxes.append(bndbox)
             gt_classes.append(self.class_to_ind[name])
@@ -133,3 +133,93 @@ class PascalVOCDataset(torch.utils.data.Dataset):
 
     def map_class_id_to_class_name(self, class_id):
         return PascalVOCDataset.CLASSES[class_id]
+
+
+class VOCPartsCropped(VisionDataset):
+    def __init__(
+        self,
+        root,
+        dir_cropped_csv,
+        dir_Annotations_Part,
+        data_split,
+        transform=None,
+        target_transform=None,
+        transforms=None,
+    ):
+        # as you would do normally
+        super(VOCPartsCropped, self).__init__(
+            root, transforms, transform, target_transform
+        )
+        object_class = voc_utils.ANNOTATION_CLASS.person
+        part_remapping = {
+            "head": [
+                pascal_part.PERSON_PARTS.head,
+                pascal_part.PERSON_PARTS.hair,
+                pascal_part.PERSON_PARTS.leye,
+                pascal_part.PERSON_PARTS.reye,
+                pascal_part.PERSON_PARTS.lear,
+                pascal_part.PERSON_PARTS.rear,
+                pascal_part.PERSON_PARTS.nose,
+                pascal_part.PERSON_PARTS.mouth,
+                pascal_part.PERSON_PARTS.neck,
+                pascal_part.PERSON_PARTS.lebrow,
+                pascal_part.PERSON_PARTS.rebrow,
+            ],
+            "torso": [pascal_part.PERSON_PARTS.torso],
+            "legs": [
+                pascal_part.PERSON_PARTS.ruleg,
+                pascal_part.PERSON_PARTS.rlleg,
+                pascal_part.PERSON_PARTS.llleg,
+                pascal_part.PERSON_PARTS.luleg,
+            ],
+            "foot": [pascal_part.PERSON_PARTS.lfoot, pascal_part.PERSON_PARTS.rfoot],
+            "arm": [
+                pascal_part.PERSON_PARTS.ruarm,
+                pascal_part.PERSON_PARTS.rlarm,
+                pascal_part.PERSON_PARTS.llarm,
+                pascal_part.PERSON_PARTS.luarm,
+            ],
+            "hand": [pascal_part.PERSON_PARTS.lhand, pascal_part.PERSON_PARTS.rhand],
+            "background": [voc_utils.ANNOTATION_CLASS.background],
+        }
+        self.dset = datasets.FilteredCroppedPascalParts(
+            root,
+            dir_cropped_csv,
+            dir_Annotations_Part,
+            object_class,
+            data_split,
+            part_remapping,
+        )
+
+    def __getitem__(self, idx):
+        # load the image as a PIL Image
+        example = self.dset[idx]
+        image = Image.fromarray(example["image"])
+
+        boxes = example[
+            "part_bboxes"
+        ]  # boxes ist List[np.ndarray], but we need List[List]
+        box_coords = [list(b.coords) for b in boxes]
+        box_coords = torch.as_tensor(box_coords).reshape(
+            -1, 4
+        )  # guard against no boxes
+        box_labels = [b.label for b in boxes]
+
+        labels = torch.tensor(box_labels)
+
+        boxlist = BoxList(box_coords, image.size, mode="xyxy")
+        boxlist.add_field("labels", labels)
+
+        # TODO: add segmentations
+
+        if self.transforms:
+            image, boxlist = self.transforms(image, boxlist)
+
+        return image, boxlist, idx
+
+    def get_img_info(self, idx):
+        example = self.dset[idx]
+        image = example["image"]
+        img_height = image.shape[0]
+        img_width = image.shape[1]
+        return {"height": img_height, "width": img_width}
