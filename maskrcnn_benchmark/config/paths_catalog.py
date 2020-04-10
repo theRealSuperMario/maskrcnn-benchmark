@@ -81,15 +81,13 @@ class DatasetCatalog(object):
         },
         "pascal_part_2010_train": {
             "root": "PascalParts/VOCdevkit/VOC2010",
-            "dir_cropped_csv": "python_voc_devkit/csv",
-            "dir_Annotations_Part": "PascalParts/trainval/Annotations_Part",
-            "data_split": voc_utils.DATA_SPLIT.train,
+            "dir_cropped_csv": "PascalParts/VOCdevkit/VOC2010/part_csv",
+            "data_split": voc_utils.DATA_SPLIT.train.name,
         },
         "pascal_part_2010_val": {
             "root": "PascalParts/VOCdevkit/VOC2010",
-            "dir_cropped_csv": "python_voc_devkit/csv",
-            "dir_Annotations_Part": "PascalParts/trainval/Annotations_Part",
-            "data_split": voc_utils.DATA_SPLIT.val,
+            "dir_cropped_csv": "PascalParts/VOCdevkit/VOC2010/part_csv",
+            "data_split": voc_utils.DATA_SPLIT.val.name,
         },
         ##############################################
         # These ones are deprecated, should be removed
@@ -173,15 +171,9 @@ class DatasetCatalog(object):
         elif "pascal_part" in name:
             data_dir = DatasetCatalog.DATA_DIR
             attrs = deepcopy(DatasetCatalog.DATASETS[name])
-            import pudb
-
-            pudb.set_trace()
             attrs["root"] = os.path.join(data_dir, attrs["root"])
             attrs["dir_cropped_csv"] = os.path.join(data_dir, attrs["dir_cropped_csv"])
-            attrs["dir_Annotations_Part"] = os.path.join(
-                data_dir, attrs["dir_Annotations_Part"]
-            )
-            return dict(factory="VOCPartsCropped", args=attrs)
+            return dict(factory="CroppedPascalPartsDataset", args=attrs)
         raise RuntimeError("Dataset not available: {}".format(name))
 
 
